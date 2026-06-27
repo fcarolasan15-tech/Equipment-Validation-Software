@@ -55,14 +55,14 @@ class Asset(Base):
 
     def compute_risk(self):
         score = (
-            self.metric_food_safety *
-            self.metric_downtime *
-            self.metric_age *
-            self.metric_pm_conformance *
-            self.metric_calibration *
-            self.metric_validation_status *
-            self.metric_spare_parts *
-            self.metric_safety_systems
+            (self.metric_food_safety or 1) *
+            (self.metric_downtime or 1) *
+            (self.metric_age or 1) *
+            (self.metric_pm_conformance or 1) *
+            (self.metric_calibration or 1) *
+            (self.metric_validation_status or 1) *
+            (self.metric_spare_parts or 1) *
+            (self.metric_safety_systems or 1)
         )
         self.risk_score = score
         if score <= 4:

@@ -12,7 +12,7 @@ from app.models.execution import ExecutionItem, Deviation, DeviationStatusEnum
 from app.models.signature import Signature, SignatureRoleEnum
 from app.models.audit import RenderJob, Attachment, RenderStatusEnum
 from app.schemas.record import (RecordCreate, RecordDataUpdate, RecordOut,
-                                 SignRequest, DeviationCreate, DeviationOut, ExecutionItemUpdate)
+                                 SignRequest, SignatureOut, DeviationCreate, DeviationOut, ExecutionItemUpdate)
 from app.services.audit_logger import log_event
 from app.services.auth import verify_password
 from app.config import settings
@@ -73,16 +73,67 @@ def update_record_data(record_id: int, body: RecordDataUpdate,
 
 
 @router.post("/{record_id}/submit-review")
-def submit_for_review(record_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def submit_for_review(record_id: int, body: SignRequest,
+                      db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     record = db.query(ValidationRecord).filter_by(id=record_id).first()
     if not record:
         raise HTTPException(404, "Record not found")
     if record.status != RecordStatusEnum.DRAFT:
         raise HTTPException(400, "Record is not in DRAFT status")
+
+    if not verify_password(body.password, user.hashed_password):
+        raise HTTPException(400, "Password verification failed — electronic signature requires password confirmation")
+
     record.status = RecordStatusEnum.IN_REVIEW
+    record.prepared_by_id = user.id
+    record.prepared_at = datetime.now(timezone.utc)
+
+    sig = Signature(
+        record_id=record_id, user_id=user.id,
+        role=SignatureRoleEnum.PREPARED_BY,
+        meaning=body.meaning or "I confirm this document is complete and ready for review",
+        password_verified="Y",
+    )
+    db.add(sig)
     log_event(db, "RECORD_SUBMITTED_FOR_REVIEW", user_id=user.id, entity_type="ValidationRecord", entity_id=record_id)
     db.commit()
-    return {"status": record.status}
+    return {"status": record.status, "prepared_by": user.full_name, "prepared_at": record.prepared_at}
+
+
+@router.post("/{record_id}/sign-review")
+def sign_review(record_id: int, body: SignRequest,
+                db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    record = db.query(ValidationRecord).filter_by(id=record_id).first()
+    if not record:
+        raise HTTPException(404, "Record not found")
+    if record.status != RecordStatusEnum.IN_REVIEW:
+        raise HTTPException(400, "Record must be IN_REVIEW for reviewer signature")
+
+    if record.prepared_by_id and record.prepared_by_id == user.id:
+        raise HTTPException(400, "Reviewer must be a different user from the preparer (21 CFR Part 11)")
+
+    existing_review = db.query(Signature).filter_by(
+        record_id=record_id, role=SignatureRoleEnum.REVIEWED_BY
+    ).first()
+    if existing_review:
+        raise HTTPException(400, "This record has already been signed by a reviewer")
+
+    if not verify_password(body.password, user.hashed_password):
+        raise HTTPException(400, "Password verification failed — electronic signature requires password confirmation")
+
+    record.reviewed_by_id = user.id
+    record.reviewed_at = datetime.now(timezone.utc)
+
+    sig = Signature(
+        record_id=record_id, user_id=user.id,
+        role=SignatureRoleEnum.REVIEWED_BY,
+        meaning=body.meaning or "I have reviewed this document and confirm its technical accuracy",
+        password_verified="Y",
+    )
+    db.add(sig)
+    log_event(db, "RECORD_REVIEWED", user_id=user.id, entity_type="ValidationRecord", entity_id=record_id)
+    db.commit()
+    return {"status": record.status, "reviewed_by": user.full_name, "reviewed_at": record.reviewed_at}
 
 
 @router.post("/{record_id}/approve")
@@ -94,6 +145,12 @@ def approve_record(record_id: int, body: SignRequest,
     if record.status != RecordStatusEnum.IN_REVIEW:
         raise HTTPException(400, "Record must be IN_REVIEW to approve")
 
+    reviewed_sig = db.query(Signature).filter_by(
+        record_id=record_id, role=SignatureRoleEnum.REVIEWED_BY
+    ).first()
+    if not reviewed_sig:
+        raise HTTPException(400, "A reviewer must sign the document before it can be approved")
+
     if not verify_password(body.password, user.hashed_password):
         raise HTTPException(400, "Password verification failed — electronic signature requires password confirmation")
 
@@ -104,13 +161,34 @@ def approve_record(record_id: int, body: SignRequest,
     sig = Signature(
         record_id=record_id, user_id=user.id,
         role=SignatureRoleEnum.APPROVED_BY,
-        meaning=body.meaning or "I approve this document",
+        meaning=body.meaning or "I approve this validation document",
         password_verified="Y",
     )
     db.add(sig)
     log_event(db, "RECORD_APPROVED", user_id=user.id, entity_type="ValidationRecord", entity_id=record_id)
     db.commit()
     return {"status": record.status, "approved_by": user.full_name, "approved_at": record.approved_at}
+
+
+@router.get("/{record_id}/signatures")
+def list_signatures(record_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    record = db.query(ValidationRecord).filter_by(id=record_id).first()
+    if not record:
+        raise HTTPException(404, "Record not found")
+    sigs = db.query(Signature).filter_by(record_id=record_id).all()
+    result = []
+    for s in sigs:
+        result.append({
+            "id": s.id,
+            "record_id": s.record_id,
+            "user_id": s.user_id,
+            "role": s.role.value,
+            "meaning": s.meaning,
+            "signed_at": s.signed_at,
+            "password_verified": s.password_verified,
+            "user_full_name": s.user.full_name if s.user else None,
+        })
+    return result
 
 
 @router.post("/{record_id}/reject")
@@ -215,6 +293,39 @@ def download_pdf(record_id: int, db: Session = Depends(get_db), _: User = Depend
         raise HTTPException(404, "PDF not yet generated")
     return FileResponse(record.current_pdf_path, media_type="application/pdf",
                         filename=f"record_{record_id}.pdf")
+
+
+@router.get("/{record_id}/download-filled")
+def download_filled(record_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    import tempfile
+    from app.services.docx_filler import fill_docx
+    from app.services.xlsx_filler import fill_xlsx
+    from app.models.template import TemplateFile
+
+    record = db.query(ValidationRecord).filter_by(id=record_id).first()
+    if not record:
+        raise HTTPException(404, "Record not found")
+
+    tf = db.query(TemplateFile).filter_by(template_version_id=record.template_version_id).first()
+    if not tf:
+        raise HTTPException(404, "No template file found for this record")
+
+    source = Path(tf.vault_path)
+    if not source.exists():
+        raise HTTPException(404, "Template file missing from vault")
+
+    tmp_dir = Path(tempfile.gettempdir()) / f"evs_filled_{record_id}"
+    tmp_dir.mkdir(exist_ok=True)
+    output = tmp_dir / f"filled_{source.name}"
+
+    if tf.file_type == "docx":
+        fill_docx(source, output, record.field_data or {})
+        media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    else:
+        fill_xlsx(source, output, record.field_data or {})
+        media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    return FileResponse(str(output), media_type=media, filename=f"record_{record_id}_{source.name}")
 
 
 @router.get("/{record_id}/audit-trail")

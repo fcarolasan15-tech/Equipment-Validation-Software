@@ -42,6 +42,19 @@ class SignRequest(BaseModel):
     meaning: Optional[str] = None
 
 
+class SignatureOut(BaseModel):
+    id: int
+    record_id: int
+    user_id: int
+    role: str
+    meaning: Optional[str]
+    signed_at: datetime
+    password_verified: str
+    user_full_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 class DeviationCreate(BaseModel):
     record_id: int
     execution_item_id: Optional[int] = None

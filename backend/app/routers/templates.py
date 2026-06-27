@@ -69,8 +69,8 @@ async def upload_template_file(version_id: int, file: UploadFile = File(...),
     if not tv:
         raise HTTPException(404, "Template version not found")
 
-    import aiofiles
-    tmp_path = Path("/tmp") / file.filename
+    import aiofiles, tempfile
+    tmp_path = Path(tempfile.gettempdir()) / file.filename
     content = await file.read()
     async with aiofiles.open(tmp_path, "wb") as f:
         await f.write(content)
