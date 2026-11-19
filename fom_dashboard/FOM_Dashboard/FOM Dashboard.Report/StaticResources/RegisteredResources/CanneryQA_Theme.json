@@ -1,0 +1,71 @@
+{
+  "name": "Cannery QA",
+  "dataColors": [
+    "#2E7D32",
+    "#F9A825",
+    "#1565C0",
+    "#C62828",
+    "#00897B",
+    "#6D4C41",
+    "#7B1FA2",
+    "#8BC34A",
+    "#0B3D12",
+    "#C0CA33"
+  ],
+  "background": "#FFFFFF",
+  "foreground": "#1B2A1E",
+  "tableAccent": "#2E7D32",
+  "good": "#2E7D32",
+  "neutral": "#F9A825",
+  "bad": "#C62828",
+  "maximum": "#2E7D32",
+  "center": "#F9A825",
+  "minimum": "#C62828",
+  "textClasses": {
+    "callout": {
+      "fontFace": "Arial",
+      "color": "#1B2A1E",
+      "fontSize": 22
+    },
+    "title": {
+      "fontFace": "Arial",
+      "color": "#0B3D12",
+      "fontSize": 11
+    },
+    "header": {
+      "fontFace": "Arial",
+      "color": "#0B3D12",
+      "fontSize": 10
+    },
+    "label": {
+      "fontFace": "Arial",
+      "color": "#1B2A1E",
+      "fontSize": 9
+    },
+    "largeTitle": {
+      "fontFace": "Arial",
+      "color": "#0B3D12",
+      "fontSize": 14
+    },
+    "smallLabel": {
+      "fontFace": "Arial",
+      "color": "#3F4A41",
+      "fontSize": 8
+    },
+    "largeLabel": {
+      "fontFace": "Arial",
+      "color": "#1B2A1E",
+      "fontSize": 11
+    },
+    "boldLabel": {
+      "fontFace": "Arial",
+      "color": "#1B2A1E",
+      "fontSize": 9
+    },
+    "dataTitle": {
+      "fontFace": "Arial",
+      "color": "#0B3D12",
+      "fontSize": 11
+    }
+  }
+}

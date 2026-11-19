@@ -1,0 +1,1273 @@
+{
+  "name": "FOM Dashboard",
+  "compatibilityLevel": 1567,
+  "model": {
+    "culture": "en-US",
+    "defaultPowerBIDataSourceVersion": "powerBI_V3",
+    "sourceQueryCulture": "en-US",
+    "dataAccessOptions": {
+      "legacyRedirects": true,
+      "returnErrorValuesAsNull": true
+    },
+    "tables": [
+      {
+        "name": "GHP",
+        "lineageTag": "ae052150-af1f-4bc0-a824-4a1ba44cc841",
+        "columns": [
+          {
+            "name": "Excel Row",
+            "dataType": "int64",
+            "sourceColumn": "Excel Row",
+            "lineageTag": "97eb76a2-3ddd-468c-8b0e-80e75f54db5b",
+            "summarizeBy": "none",
+            "description": "Row number in the Excel sheet - use it to find and fix the source row"
+          },
+          {
+            "name": "Sheet",
+            "dataType": "string",
+            "sourceColumn": "Sheet",
+            "lineageTag": "2e36d1ef-63a6-4abe-b675-d13ecbc0edf6",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Date",
+            "dataType": "dateTime",
+            "sourceColumn": "Date",
+            "lineageTag": "a39147b6-56fb-4ccb-9c68-a8c7ce30e1fa",
+            "summarizeBy": "none",
+            "formatString": "dd mmm yyyy"
+          },
+          {
+            "name": "Inspection",
+            "dataType": "string",
+            "sourceColumn": "Inspection",
+            "lineageTag": "097a2ddb-bf4b-4c7d-9885-1c8dd36ba00d",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Department",
+            "dataType": "string",
+            "sourceColumn": "Department",
+            "lineageTag": "7a158001-a846-4d7b-88e4-c64e44cbc5a1",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Finding",
+            "dataType": "string",
+            "sourceColumn": "Finding",
+            "lineageTag": "b4d69f6f-474e-4972-bbba-979bd4b4741b",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "FOM Category",
+            "dataType": "string",
+            "sourceColumn": "FOM Category",
+            "lineageTag": "943473d8-353f-4950-af5d-cf3dddee6a04",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Status",
+            "dataType": "string",
+            "sourceColumn": "Status",
+            "lineageTag": "b6357bd5-e6ec-44fb-84c9-5325fa42f27c",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Status As Typed",
+            "dataType": "string",
+            "sourceColumn": "Status As Typed",
+            "lineageTag": "f609073f-8a40-4856-915f-0ec71ddee35c",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Time Corrected",
+            "dataType": "string",
+            "sourceColumn": "Time Corrected",
+            "lineageTag": "64af9f72-3c0e-44ea-aa22-065ec3e60495",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Remarks",
+            "dataType": "string",
+            "sourceColumn": "Remarks",
+            "lineageTag": "56f5c213-8740-47df-a0a6-4e4aa1975a5e",
+            "summarizeBy": "none"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "GHP",
+            "mode": "import",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "    // SHINE: trim, remove line breaks / non-breaking / double spaces",
+                "    CleanText = (v as any) as nullable text =>",
+                "        if v = null then null else",
+                "        let",
+                "            t1 = Text.Replace(Text.Replace(Text.From(v), Character.FromNumber(160), \" \"), \"#(lf)\", \" \"),",
+                "            t2 = Text.Combine(List.Select(Text.Split(Text.Clean(t1), \" \"), each _ <> \"\"), \" \")",
+                "        in",
+                "            if t2 = \"\" then null else t2,",
+                "    Key = (v as nullable text) as text => if v = null then \"\" else Text.Select(Text.Upper(v), {\"A\"..\"Z\", \"0\"..\"9\", \"&\"}),",
+                "    // dates: real Excel dates, Excel serial numbers, or text typed as dd/mm/yyyy (e.g. 15/10/2026) or 12-May-26",
+                "    ToDate = (v as any) as nullable date =>",
+                "        if v = null then null",
+                "        else if v is date then v",
+                "        else if v is datetime then Date.From(v)",
+                "        else if v is number then Date.From(v)",
+                "        else",
+                "            let s = Text.Trim(Text.From(v)), p = Text.Split(s, \"/\") in",
+                "            try (if List.Count(p) = 3 then #date(Number.From(p{2}), Number.From(p{1}), Number.From(p{0}))",
+                "                 else Date.From(DateTime.From(s, \"en-US\"))) otherwise null,",
+                "    // one Department list for both files (GHP Department = Line FOM \"Possible Source - Department\")",
+                "    DeptMap = [PREPRECEIVING = \"Prep Receiving\", PREPPT = \"Prep PT\", PREPMTCE = \"Prep Mtce\", MAINTENANCEPREP = \"Prep Mtce\",",
+                "        PREPMAINTENANCE = \"Prep Mtce\", COOKROOM = \"Cookroom\", SPDCOOKROOM = \"Cookroom\", CRUSH = \"Crush\", CRUSHED = \"Crush\",",
+                "        SPDCRUSHED = \"Crush\", SPDCRUSH = \"Crush\", SPDMTCE = \"SPD Mtce\", TPD = \"TPD\", POD = \"POD\", CANPLANT = \"Can Plant\",",
+                "        CANPLANTMTCE = \"Can Plant Mtce\", LPD = \"LPD\", LPDMTCE = \"LPD Mtce\", #\"FPDIPIC\" = \"FPD/IPIC\", FPD = \"FPD/IPIC\",",
+                "        IPIC = \"FPD/IPIC\", TETRA = \"Tetra\", JNDFDM = \"JnD/FDM\", #\"J&D\" = \"JnD/FDM\", JND = \"JnD/FDM\", JD = \"JnD/FDM\", #\"J&DFDM\" = \"JnD/FDM\",",
+                "        GPSLMTCE = \"GPSL Mtce\"],",
+                "    DeptFn = (v as nullable text) as nullable text =>",
+                "        if v = null then null else Record.FieldOrDefault(DeptMap, Text.Remove(Key(v), {\"&\"}), Record.FieldOrDefault(DeptMap, Key(v), Text.Upper(v))),",
+                "    // one FOM Category list for both files",
+                "    CatMap = [METAL = \"Metal\", GLASS = \"Glass\", HAIR = \"Hair\", INSECT = \"Insect\", INSECTS = \"Insect\", PAINTFLAKE = \"Paint Flake\",",
+                "        PAINTFLAKES = \"Paint Flake\", RUBBER = \"Rubber\", THREAD = \"Thread\", THREADS = \"Thread\", WOOD = \"Wood\", PLASTIC = \"Plastic\",",
+                "        STONE = \"Stone\", GREASE = \"Grease\", PAPER = \"Paper\", PERSONNEL = \"Personnel\", CONVEYORSTRIP = \"Conveyor Strip\",",
+                "        OTHER = \"Other\", OTHERS = \"Other\"],",
+                "    CatFn = (v as nullable text) as nullable text => if v = null then null else Record.FieldOrDefault(CatMap, Key(v), Text.Upper(v)),",
+                "    // SORT: every sheet whose header row (within the first 10 rows) contains FOM CATEGORY - one sheet or one per month",
+                "    HeaderPos = (t as table) as number =>",
+                "        List.PositionOf(List.Transform(Table.ToRows(Table.FirstN(t, 10)),",
+                "            (r) => List.Contains(List.Transform(r, each try Text.Upper(Text.Trim(Text.From(_))) otherwise \"\"), \"FOM CATEGORY\")), true),",
+                "    Sheets = Table.AddColumn(Table.SelectRows(GhpWorkbook, each [Kind] = \"Sheet\"), \"Hdr\", each HeaderPos([Data]), Int64.Type),",
+                "    LogSheets = Table.SelectRows(Sheets, each [Hdr] >= 0),",
+                "    Prep = (t as table, h as number, sheet as text) as table =>",
+                "        let",
+                "            Promoted = Table.PromoteHeaders(Table.Skip(t, h), [PromoteAllScalars = true]),",
+                "            Names = Table.TransformColumnNames(Promoted, each Text.Upper(Text.Combine(List.Select(Text.SplitAny(_, \" #(lf)#(cr)#(tab)\"), each _ <> \"\"), \" \"))),",
+                "            WithRow = Table.AddIndexColumn(Names, \"EXCEL ROW\", h + 2, 1, Int64.Type),",
+                "            // Excel error cells (#VALUE!, #N/A) would stop the refresh: load them as blank",
+                "            NoErr = Table.ReplaceErrorValues(WithRow, List.Transform(Table.ColumnNames(WithRow), each {_, null})),",
+                "            Kept = Table.SelectColumns(NoErr, {\"EXCEL ROW\", \"DATE\", \"INSPECTION\", \"DEPARTMENT\", \"FINDING\", \"FOM CATEGORY\", \"STATUS\",",
+                "                \"TIME CORRECTED\", \"REMARKS (IF UNCORRECTED)\"}, MissingField.UseNull)",
+                "        in",
+                "            Table.AddColumn(Kept, \"Sheet\", each sheet, type text),",
+                "    Combined = Table.Combine(Table.AddColumn(LogSheets, \"T\", each Prep([Data], [Hdr], [Name]))[T]),",
+                "    // drop empty rows (no date, no finding, no category) - e.g. the dropdown-list area",
+                "    NonEmpty = Table.SelectRows(Combined, each [DATE] <> null or CleanText([FINDING]) <> null),",
+                "    // SET IN ORDER + STANDARDISE",
+                "    T = Table.FromRecords(Table.TransformRows(NonEmpty, (r) =>",
+                "        let st = Key(CleanText(r[STATUS])) in [",
+                "            #\"Excel Row\" = r[EXCEL ROW],",
+                "            Sheet = r[Sheet],",
+                "            Date = ToDate(r[DATE]),",
+                "            Inspection = let i = CleanText(r[INSPECTION]) in if i = null then \"Not recorded\" else Text.Upper(i),",
+                "            Department = let d = DeptFn(CleanText(r[DEPARTMENT])) in if d = null then \"Not recorded\" else d,",
+                "            Finding = CleanText(r[FINDING]),",
+                "            #\"FOM Category\" = let c = CatFn(CleanText(r[FOM CATEGORY])) in if c = null then \"Not recorded\" else c,",
+                "            Status = if st = \"CORRECTED\" then \"Corrected\" else if st = \"UNCORRECTED\" then \"Uncorrected\" else \"Not stated\",",
+                "            #\"Status As Typed\" = CleanText(r[STATUS]),",
+                "            #\"Time Corrected\" = CleanText(r[TIME CORRECTED]),",
+                "            Remarks = CleanText(r[#\"REMARKS (IF UNCORRECTED)\"])]),",
+                "        type table [#\"Excel Row\" = Int64.Type, Sheet = text, Date = date, Inspection = text, Department = text, Finding = text,",
+                "            #\"FOM Category\" = text, Status = text, #\"Status As Typed\" = text, #\"Time Corrected\" = text, Remarks = text])",
+                "in",
+                "    T"
+              ]
+            }
+          }
+        ],
+        "description": "FY27 Daily FOM Inspection (GHP) - one row per finding"
+      },
+      {
+        "name": "LineFOM",
+        "lineageTag": "d1c29a61-4d45-46e3-af99-e1fd54c2737e",
+        "columns": [
+          {
+            "name": "Excel Row",
+            "dataType": "int64",
+            "sourceColumn": "Excel Row",
+            "lineageTag": "89494efb-1797-4e19-846e-31e5701825d1",
+            "summarizeBy": "none",
+            "description": "Row number in the Excel sheet"
+          },
+          {
+            "name": "Date",
+            "dataType": "dateTime",
+            "sourceColumn": "Date",
+            "lineageTag": "932ca61a-9cd0-4632-ad6e-fce78c749488",
+            "summarizeBy": "none",
+            "formatString": "dd mmm yyyy"
+          },
+          {
+            "name": "Detected By",
+            "dataType": "string",
+            "sourceColumn": "Detected By",
+            "lineageTag": "8c76be2e-f0c8-4ef5-adef-16cf776e8d9c",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Detection Method",
+            "dataType": "string",
+            "sourceColumn": "Detection Method",
+            "lineageTag": "51dcc59a-a439-4660-94a4-6049bb7fb0cf",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Detection Point",
+            "dataType": "string",
+            "sourceColumn": "Detection Point",
+            "lineageTag": "4e1dad97-1466-4510-b3f9-5c21e0400536",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Detection Group",
+            "dataType": "string",
+            "sourceColumn": "Detection Group",
+            "lineageTag": "c216df46-bc5d-4598-9f73-9c701fd18c20",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Line Status",
+            "dataType": "string",
+            "sourceColumn": "Line Status",
+            "lineageTag": "cfda463e-817a-43e1-aeb9-bf8f27f68364",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "FOM Count",
+            "dataType": "double",
+            "sourceColumn": "FOM Count",
+            "lineageTag": "309efeaf-fa32-4a18-8374-fbb3fc4f9036",
+            "summarizeBy": "sum",
+            "formatString": "#,0"
+          },
+          {
+            "name": "FOM Type",
+            "dataType": "string",
+            "sourceColumn": "FOM Type",
+            "lineageTag": "49ead09b-6cbf-404b-9713-d8f761ab83bb",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "FOM Description",
+            "dataType": "string",
+            "sourceColumn": "FOM Description",
+            "lineageTag": "c70a4546-807f-495e-be9e-c23f97a8f098",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Time Intercepted",
+            "dataType": "string",
+            "sourceColumn": "Time Intercepted",
+            "lineageTag": "05d095ee-c9ef-4a19-8f90-aeabb2ba529d",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Line No",
+            "dataType": "string",
+            "sourceColumn": "Line No",
+            "lineageTag": "fb650e5a-e2c3-4a91-b983-42531b98f18e",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Product Details",
+            "dataType": "string",
+            "sourceColumn": "Product Details",
+            "lineageTag": "a2ba26d1-5ad1-4ca9-b809-6e5aae01b93d",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Source Department",
+            "dataType": "string",
+            "sourceColumn": "Source Department",
+            "lineageTag": "b2329896-8a18-403b-aeb6-33e225279b9c",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Source Area",
+            "dataType": "string",
+            "sourceColumn": "Source Area",
+            "lineageTag": "fa162f82-95d2-4394-acbc-bcc14fe64ba8",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Immediate Action",
+            "dataType": "string",
+            "sourceColumn": "Immediate Action",
+            "lineageTag": "40819771-4707-48c3-80c1-8d0ee9f107c1",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Root Cause",
+            "dataType": "string",
+            "sourceColumn": "Root Cause",
+            "lineageTag": "578685fb-e1bc-4d33-8927-cbad588c8826",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Corrective Action",
+            "dataType": "string",
+            "sourceColumn": "Corrective Action",
+            "lineageTag": "cd938f9a-46af-40f1-af5c-ac6b95bca556",
+            "summarizeBy": "none"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "LineFOM",
+            "mode": "import",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "    // SHINE: trim, remove line breaks / non-breaking / double spaces",
+                "    CleanText = (v as any) as nullable text =>",
+                "        if v = null then null else",
+                "        let",
+                "            t1 = Text.Replace(Text.Replace(Text.From(v), Character.FromNumber(160), \" \"), \"#(lf)\", \" \"),",
+                "            t2 = Text.Combine(List.Select(Text.Split(Text.Clean(t1), \" \"), each _ <> \"\"), \" \")",
+                "        in",
+                "            if t2 = \"\" then null else t2,",
+                "    Key = (v as nullable text) as text => if v = null then \"\" else Text.Select(Text.Upper(v), {\"A\"..\"Z\", \"0\"..\"9\", \"&\"}),",
+                "    // dates: real Excel dates, Excel serial numbers, or text typed as dd/mm/yyyy (e.g. 15/10/2026) or 12-May-26",
+                "    ToDate = (v as any) as nullable date =>",
+                "        if v = null then null",
+                "        else if v is date then v",
+                "        else if v is datetime then Date.From(v)",
+                "        else if v is number then Date.From(v)",
+                "        else",
+                "            let s = Text.Trim(Text.From(v)), p = Text.Split(s, \"/\") in",
+                "            try (if List.Count(p) = 3 then #date(Number.From(p{2}), Number.From(p{1}), Number.From(p{0}))",
+                "                 else Date.From(DateTime.From(s, \"en-US\"))) otherwise null,",
+                "    // one Department list for both files (GHP Department = Line FOM \"Possible Source - Department\")",
+                "    DeptMap = [PREPRECEIVING = \"Prep Receiving\", PREPPT = \"Prep PT\", PREPMTCE = \"Prep Mtce\", MAINTENANCEPREP = \"Prep Mtce\",",
+                "        PREPMAINTENANCE = \"Prep Mtce\", COOKROOM = \"Cookroom\", SPDCOOKROOM = \"Cookroom\", CRUSH = \"Crush\", CRUSHED = \"Crush\",",
+                "        SPDCRUSHED = \"Crush\", SPDCRUSH = \"Crush\", SPDMTCE = \"SPD Mtce\", TPD = \"TPD\", POD = \"POD\", CANPLANT = \"Can Plant\",",
+                "        CANPLANTMTCE = \"Can Plant Mtce\", LPD = \"LPD\", LPDMTCE = \"LPD Mtce\", #\"FPDIPIC\" = \"FPD/IPIC\", FPD = \"FPD/IPIC\",",
+                "        IPIC = \"FPD/IPIC\", TETRA = \"Tetra\", JNDFDM = \"JnD/FDM\", #\"J&D\" = \"JnD/FDM\", JND = \"JnD/FDM\", JD = \"JnD/FDM\", #\"J&DFDM\" = \"JnD/FDM\",",
+                "        GPSLMTCE = \"GPSL Mtce\"],",
+                "    DeptFn = (v as nullable text) as nullable text =>",
+                "        if v = null then null else Record.FieldOrDefault(DeptMap, Text.Remove(Key(v), {\"&\"}), Record.FieldOrDefault(DeptMap, Key(v), Text.Upper(v))),",
+                "    // one FOM Category list for both files",
+                "    CatMap = [METAL = \"Metal\", GLASS = \"Glass\", HAIR = \"Hair\", INSECT = \"Insect\", INSECTS = \"Insect\", PAINTFLAKE = \"Paint Flake\",",
+                "        PAINTFLAKES = \"Paint Flake\", RUBBER = \"Rubber\", THREAD = \"Thread\", THREADS = \"Thread\", WOOD = \"Wood\", PLASTIC = \"Plastic\",",
+                "        STONE = \"Stone\", GREASE = \"Grease\", PAPER = \"Paper\", PERSONNEL = \"Personnel\", CONVEYORSTRIP = \"Conveyor Strip\",",
+                "        OTHER = \"Other\", OTHERS = \"Other\"],",
+                "    CatFn = (v as nullable text) as nullable text => if v = null then null else Record.FieldOrDefault(CatMap, Key(v), Text.Upper(v)),",
+                "    // SORT: the log sheet (\"Phyiscal Hazard - FOM\"); Sheet3 is an October copy and is ignored",
+                "    Sheet = Table.SelectRows(LineWorkbook, each [Kind] = \"Sheet\" and Text.Contains(Text.Upper([Name]), \"HAZARD\")){0}[Data],",
+                "    Promoted = Table.PromoteHeaders(Sheet, [PromoteAllScalars = true]),",
+                "    Names = Table.TransformColumnNames(Promoted, each Text.Upper(Text.Combine(List.Select(Text.SplitAny(_, \" #(lf)#(cr)#(tab)\"), each _ <> \"\"), \" \"))),",
+                "    WithRow = Table.AddIndexColumn(Names, \"EXCEL ROW\", 2, 1, Int64.Type),",
+                "    NoErr = Table.ReplaceErrorValues(WithRow, List.Transform(Table.ColumnNames(WithRow), each {_, null})),",
+                "    Kept = Table.SelectColumns(NoErr, {\"EXCEL ROW\", \"DATE\", \"DEPARTMENT\", \"FOM DETECTION\", \"FOM DETECTION LINE/AREA #\", \"COUNT\", \"FOM CODE\",",
+                "        \"DESCRIPTION OF FOM\", \"FOM TIME INTERCEPTED\", \"LINE #\", \"PRODUCT DETAILS\", \"POSSIBLE SOURCE - DEPARTMENT\",",
+                "        \"POSSIBLE SOURCE (SPECIFIC AREA)\", \"IMMEDIATE ACTION\", \"ROOT-CAUSE\", \"CORRECTIVE ACTION\"}, MissingField.UseNull),",
+                "    NonEmpty = Table.SelectRows(Kept, each [DATE] <> null or [COUNT] <> null or [FOM CODE] <> null),",
+                "    // one spelling per detection point (\"Juice line 9\" / \"Juice Line 9\", \"SUP Line 3 & 4\", \"Line Interceptions\"...)",
+                "    PointMap = [LABELLINGLINE1 = \"Labelling Line 1\", LABELLINGLINE2 = \"Labelling Line 2\", LABELLINGLINE3 = \"Labelling Line 3\",",
+                "        LABELLINGLINE6 = \"Labelling Line 6\", LABELLINGLINE7 = \"Labelling Line 7\", LABELLINGLINE8 = \"Labelling Line 8\",",
+                "        LABELLINGLINE14 = \"Labelling Line 14\", #\"SUPLINE3&4\" = \"SUP Line 3&4\", SUPLINE5 = \"SUP Line 5\", SUPLINE6 = \"SUP Line 6\",",
+                "        JUICELINE9 = \"Juice Line 9\", PLASTICCUPLINE4 = \"Plastic Cup Line 4\", PLASTICCUPLINE5 = \"Plastic Cup Line 5\",",
+                "        CRUSHEDASEPTICLINE = \"Crushed Aseptic Line\", LPDASEPTICLINE = \"LPD Aseptic Line\", QAPRESHIPMENTSAMPLES = \"QA Pre-Shipment Samples\",",
+                "        QAMETALFRAGMENTSAMPLING = \"QA Metal Fragment Sampling\", LABAUDITSAMPLES = \"Lab Audit Samples\", QAGEMBAWALK = \"QA Gemba Walk\",",
+                "        LINEINTERCEPTION = \"Line Interception\", LINEINTERCEPTIONS = \"Line Interception\"],",
+                "    // detection groups = the rows of the team's Summary sheet (\"By FOM Detection\")",
+                "    GroupFn = (m as text, p as text, dept as text) as text =>",
+                "        if m = \"XRAY\" then (if Text.StartsWith(p, \"LABELLING\") then \"X-Ray: Labelling\" else if Text.StartsWith(p, \"JUICE\") then \"X-Ray: J&D Juice\" else \"X-Ray: IPIC\")",
+                "        else if m = \"METALDETECTOR\" then (if Text.Contains(p, \"PLASTICCUP\") then \"Metal Detection: Plastic Cup\" else if Text.Contains(p, \"CRUSHED\") then \"Metal Detection: Aseptic Crushed\"",
+                "            else if Text.StartsWith(p, \"LPD\") then \"Metal Detection: LPD\" else \"Metal Detection: Other\")",
+                "        else if m = \"VISUALINSPECTION\" then (if Text.Contains(p, \"LABAUDIT\") then \"Visual Inspection: Lab Audits\" else if Text.Contains(p, \"PRESHIPMENT\") then \"Visual Inspection: Pre-Shipment\"",
+                "            else if Text.Contains(p, \"METALFRAGMENT\") then \"Visual Inspection: Metal Fragment\" else \"Visual Inspection: Line Interception\")",
+                "        else \"Not recorded\",",
+                "    T = Table.FromRecords(Table.TransformRows(NonEmpty, (r) =>",
+                "        let",
+                "            cnt = r[COUNT],",
+                "            n = if cnt is number then cnt else try Number.From(Text.Trim(Text.From(cnt))) otherwise null,",
+                "            pt = CleanText(r[#\"FOM DETECTION LINE/AREA #\"]),",
+                "            meth = CleanText(r[FOM DETECTION]),",
+                "            dby = CleanText(r[DEPARTMENT])",
+                "        in [",
+                "            #\"Excel Row\" = r[EXCEL ROW],",
+                "            Date = ToDate(r[DATE]),",
+                "            #\"Detected By\" = if dby = null then \"Not recorded\" else dby,",
+                "            #\"Detection Method\" = if meth = null then \"Not recorded\" else meth,",
+                "            #\"Detection Point\" = if pt = null then \"Not recorded\" else Record.FieldOrDefault(PointMap, Key(pt), pt),",
+                "            #\"Detection Group\" = GroupFn(Key(meth), Key(pt), Key(dby)),",
+                "            // Count: 0/1/2 = line ran (pieces found), NR = not running",
+                "            #\"Line Status\" = if n <> null then \"Running\" else if Key(CleanText(cnt)) = \"NR\" then \"Not running\" else \"Not recorded\",",
+                "            #\"FOM Count\" = n,",
+                "            #\"FOM Type\" = CatFn(CleanText(r[FOM CODE])),",
+                "            #\"FOM Description\" = CleanText(r[DESCRIPTION OF FOM]),",
+                "            #\"Time Intercepted\" = CleanText(r[FOM TIME INTERCEPTED]),",
+                "            #\"Line No\" = CleanText(r[#\"LINE #\"]),",
+                "            #\"Product Details\" = CleanText(r[PRODUCT DETAILS]),",
+                "            #\"Source Department\" = DeptFn(CleanText(r[#\"POSSIBLE SOURCE - DEPARTMENT\"])),",
+                "            #\"Source Area\" = CleanText(r[#\"POSSIBLE SOURCE (SPECIFIC AREA)\"]),",
+                "            #\"Immediate Action\" = CleanText(r[IMMEDIATE ACTION]),",
+                "            #\"Root Cause\" = CleanText(r[#\"ROOT-CAUSE\"]),",
+                "            #\"Corrective Action\" = CleanText(r[CORRECTIVE ACTION])]),",
+                "        type table [#\"Excel Row\" = Int64.Type, Date = date, #\"Detected By\" = text, #\"Detection Method\" = text, #\"Detection Point\" = text,",
+                "            #\"Detection Group\" = text, #\"Line Status\" = text, #\"FOM Count\" = number, #\"FOM Type\" = text, #\"FOM Description\" = text,",
+                "            #\"Time Intercepted\" = text, #\"Line No\" = text, #\"Product Details\" = text, #\"Source Department\" = text, #\"Source Area\" = text,",
+                "            #\"Immediate Action\" = text, #\"Root Cause\" = text, #\"Corrective Action\" = text])",
+                "in",
+                "    T"
+              ]
+            }
+          }
+        ],
+        "description": "Line FOM Detection log - one row per line per day (+ extra interception rows)"
+      },
+      {
+        "name": "Date",
+        "lineageTag": "77a88599-8ec0-4b57-8c73-925b79df0373",
+        "columns": [
+          {
+            "name": "Date",
+            "dataType": "dateTime",
+            "sourceColumn": "Date",
+            "lineageTag": "d9e54cb8-00b5-436c-bbfe-e12a11e59b73",
+            "summarizeBy": "none",
+            "formatString": "dd mmm yyyy",
+            "isKey": true
+          },
+          {
+            "name": "Year",
+            "dataType": "int64",
+            "sourceColumn": "Year",
+            "lineageTag": "7a3aa6fb-8961-4b98-b2c4-6ccd44acb6a2",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Month No",
+            "dataType": "int64",
+            "sourceColumn": "Month No",
+            "lineageTag": "bb505ad4-a16f-4436-ae49-d3777ad6254b",
+            "summarizeBy": "none",
+            "isHidden": true
+          },
+          {
+            "name": "Fiscal Month No",
+            "dataType": "int64",
+            "sourceColumn": "Fiscal Month No",
+            "lineageTag": "3795426b-9d6f-41ac-9b9d-544dab4c5561",
+            "summarizeBy": "none",
+            "isHidden": true
+          },
+          {
+            "name": "Month",
+            "dataType": "string",
+            "sourceColumn": "Month",
+            "lineageTag": "c0cae7c0-a937-4003-936e-1d9db50d4008",
+            "summarizeBy": "none",
+            "sortByColumn": "Fiscal Month No"
+          },
+          {
+            "name": "Year Month",
+            "dataType": "string",
+            "sourceColumn": "Year Month",
+            "lineageTag": "d56f481c-7fa1-4aca-a2c0-eb9cdbc782c1",
+            "summarizeBy": "none",
+            "sortByColumn": "Year Month Key"
+          },
+          {
+            "name": "Year Month Key",
+            "dataType": "int64",
+            "sourceColumn": "Year Month Key",
+            "lineageTag": "248e4255-4e8f-4a14-b537-86fe8f3542b5",
+            "summarizeBy": "none",
+            "isHidden": true
+          },
+          {
+            "name": "Fiscal Year No",
+            "dataType": "int64",
+            "sourceColumn": "Fiscal Year No",
+            "lineageTag": "bd7dd2d9-2efc-47b8-b866-9e6813a4f662",
+            "summarizeBy": "none",
+            "isHidden": true
+          },
+          {
+            "name": "Fiscal Year",
+            "dataType": "string",
+            "sourceColumn": "Fiscal Year",
+            "lineageTag": "e15d4fee-8f3c-41a3-9c49-197adc5ae3ba",
+            "summarizeBy": "none",
+            "sortByColumn": "Fiscal Year No"
+          },
+          {
+            "name": "FY Flag",
+            "dataType": "string",
+            "sourceColumn": "FY Flag",
+            "lineageTag": "8b8770fc-fb95-42ab-bc66-bbbf2c11916a",
+            "summarizeBy": "none"
+          },
+          {
+            "name": "Week Start",
+            "dataType": "dateTime",
+            "sourceColumn": "Week Start",
+            "lineageTag": "1d2334e5-e21b-49a5-ab66-803645226129",
+            "summarizeBy": "none",
+            "formatString": "dd mmm yyyy"
+          },
+          {
+            "name": "Week Key",
+            "dataType": "int64",
+            "sourceColumn": "Week Key",
+            "lineageTag": "dda3e81e-9936-4f0b-8bf9-88bfc218bc39",
+            "summarizeBy": "none",
+            "isHidden": true
+          },
+          {
+            "name": "Day",
+            "dataType": "string",
+            "sourceColumn": "Day",
+            "lineageTag": "f0eff2cc-76d6-4aee-841f-2498ab18764d",
+            "summarizeBy": "none",
+            "sortByColumn": "Date"
+          },
+          {
+            "name": "Fiscal Week Year No",
+            "dataType": "int64",
+            "sourceColumn": "Fiscal Week Year No",
+            "lineageTag": "24ffc792-7dab-4a7d-bc8c-9a0add33d27f",
+            "summarizeBy": "none",
+            "isHidden": true
+          },
+          {
+            "name": "Fiscal Week No",
+            "dataType": "int64",
+            "sourceColumn": "Fiscal Week No",
+            "lineageTag": "57c9eee4-24c3-4b86-8003-da9735ddbeba",
+            "summarizeBy": "none",
+            "isHidden": true
+          },
+          {
+            "name": "Fiscal Week",
+            "dataType": "string",
+            "sourceColumn": "Fiscal Week",
+            "lineageTag": "354dcc06-1c7d-4435-9ba1-5d2cd3223463",
+            "summarizeBy": "none",
+            "sortByColumn": "Week Key"
+          },
+          {
+            "name": "Fiscal Week Label",
+            "dataType": "string",
+            "sourceColumn": "Fiscal Week Label",
+            "lineageTag": "5ad8850c-5526-435e-97cb-8ca1115e3212",
+            "summarizeBy": "none",
+            "sortByColumn": "Week Key"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "Date",
+            "mode": "import",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "    AllDates = List.Buffer(List.RemoveNulls(GHP[Date] & LineFOM[Date])),",
+                "    MinDate = Date.StartOfMonth(List.Min(AllDates)),",
+                "    MaxData = List.Max(AllDates),",
+                "    MaxDate = Date.EndOfMonth(MaxData),",
+                "    CurFY = if Date.Month(MaxData) >= 5 then Date.Year(MaxData) + 1 else Date.Year(MaxData),",
+                "    Dates = List.Dates(MinDate, Duration.Days(MaxDate - MinDate) + 1, #duration(1, 0, 0, 0)),",
+                "    Base = Table.FromList(Dates, Splitter.SplitByNothing(), type table [Date = date]),",
+                "    AddYear = Table.AddColumn(Base, \"Year\", each Date.Year([Date]), Int64.Type),",
+                "    AddMonthNo = Table.AddColumn(AddYear, \"Month No\", each Date.Month([Date]), Int64.Type),",
+                "    AddFMonthNo = Table.AddColumn(AddMonthNo, \"Fiscal Month No\", each Number.Mod([Month No] + 7, 12) + 1, Int64.Type),",
+                "    AddMonth = Table.AddColumn(AddFMonthNo, \"Month\", each Date.ToText([Date], \"MMM\", \"en-US\"), type text),",
+                "    AddYearMonth = Table.AddColumn(AddMonth, \"Year Month\", each Date.ToText([Date], \"MMM yyyy\", \"en-US\"), type text),",
+                "    AddYearMonthKey = Table.AddColumn(AddYearMonth, \"Year Month Key\", each [Year] * 100 + [Month No], Int64.Type),",
+                "    AddFYNo = Table.AddColumn(AddYearMonthKey, \"Fiscal Year No\", each if [Month No] >= 5 then [Year] + 1 else [Year], Int64.Type),",
+                "    AddFY = Table.AddColumn(AddFYNo, \"Fiscal Year\", each \"FY\" & Text.End(Text.From([Fiscal Year No]), 2), type text),",
+                "    AddFYFlag = Table.AddColumn(AddFY, \"FY Flag\", each if [Fiscal Year No] = CurFY then \"Current FY\" else \"Earlier FY\", type text),",
+                "    AddWeekStart = Table.AddColumn(AddFYFlag, \"Week Start\", each Date.StartOfWeek([Date], Day.Monday), type date),",
+                "    AddWeekKey = Table.AddColumn(AddWeekStart, \"Week Key\", each Date.Year([Week Start]) * 10000 + Date.Month([Week Start]) * 100 + Date.Day([Week Start]), Int64.Type),",
+                "    AddDay = Table.AddColumn(AddWeekKey, \"Day\", each Date.ToText([Date], \"ddd dd MMM yy\", \"en-US\"), type text),",
+                "    // fiscal week: Mon-Sun, WK01 = the week containing 1 May; a week belongs to the FY of its Sunday",
+                "    AddFWYear = Table.AddColumn(AddDay, \"Fiscal Week Year No\", each let we = Date.AddDays([Week Start], 6) in if Date.Month(we) >= 5 then Date.Year(we) + 1 else Date.Year(we), Int64.Type),",
+                "    AddFWNo = Table.AddColumn(AddFWYear, \"Fiscal Week No\", each Number.IntegerDivide(Duration.Days([Week Start] - Date.StartOfWeek(#date([Fiscal Week Year No] - 1, 5, 1), Day.Monday)), 7) + 1, Int64.Type),",
+                "    AddFW = Table.AddColumn(AddFWNo, \"Fiscal Week\", each \"WK\" & Text.PadStart(Text.From([Fiscal Week No]), 2, \"0\") & \" FY\" & Text.End(Text.From([Fiscal Week Year No]), 2), type text),",
+                "    AddFWLabel = Table.AddColumn(AddFW, \"Fiscal Week Label\", each [Fiscal Week] & \" (\" & Date.ToText([Week Start], \"d MMM\", \"en-US\") & \"–\" & Date.ToText(Date.AddDays([Week Start], 6), \"d MMM\", \"en-US\") & \")\", type text)",
+                "in",
+                "    AddFWLabel"
+              ]
+            }
+          }
+        ],
+        "dataCategory": "Time"
+      },
+      {
+        "name": "Department",
+        "lineageTag": "0883e46b-d5d6-4357-a844-587236ef9750",
+        "columns": [
+          {
+            "name": "Department",
+            "dataType": "string",
+            "sourceColumn": "Department",
+            "lineageTag": "fd70ea2f-0f41-455e-a3e4-3d9456720842",
+            "summarizeBy": "none"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "Department",
+            "mode": "import",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "    // one Department list (keys already standardised in GHP / LineFOM)",
+                "    All = List.Distinct(List.RemoveNulls(GHP[Department] & LineFOM[#\"Source Department\"])),",
+                "    T = Table.FromList(List.Sort(All), Splitter.SplitByNothing(), type table [Department = text])",
+                "in",
+                "    T"
+              ]
+            }
+          }
+        ],
+        "description": "Shared list: GHP Department + Line FOM possible source department"
+      },
+      {
+        "name": "FOM Category",
+        "lineageTag": "fe5227ec-862c-469b-97ec-8a135a774f82",
+        "columns": [
+          {
+            "name": "FOM Category",
+            "dataType": "string",
+            "sourceColumn": "FOM Category",
+            "lineageTag": "d2920ce1-0892-4c9d-ac0f-7575914aabc0",
+            "summarizeBy": "none"
+          }
+        ],
+        "partitions": [
+          {
+            "name": "FOM Category",
+            "mode": "import",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "    All = List.Distinct(List.RemoveNulls(GHP[#\"FOM Category\"] & LineFOM[#\"FOM Type\"])),",
+                "    T = Table.FromList(List.Sort(All), Splitter.SplitByNothing(), type table [#\"FOM Category\" = text])",
+                "in",
+                "    T"
+              ]
+            }
+          }
+        ],
+        "description": "Shared list: GHP FOM category + Line FOM code"
+      },
+      {
+        "name": "_Measures",
+        "lineageTag": "af388f20-0ee8-419d-bcb0-71f0b02c5a69",
+        "columns": [
+          {
+            "name": "Placeholder",
+            "dataType": "string",
+            "sourceColumn": "Placeholder",
+            "lineageTag": "958d94e8-169a-4467-ac54-817718ffb261",
+            "summarizeBy": "none",
+            "isHidden": true
+          }
+        ],
+        "partitions": [
+          {
+            "name": "_Measures",
+            "mode": "import",
+            "source": {
+              "type": "m",
+              "expression": [
+                "let",
+                "    Source = #table(type table [Placeholder = text], {})",
+                "in",
+                "    Source"
+              ]
+            }
+          }
+        ],
+        "measures": [
+          {
+            "name": "GHP Findings",
+            "expression": "COUNTROWS ( GHP )",
+            "lineageTag": "6a94a1a8-897c-439b-b335-f60ed9b43bf1",
+            "formatString": "#,0",
+            "displayFolder": "1 Base",
+            "description": "GHP inspection findings (rows in the Daily FOM Inspection log)"
+          },
+          {
+            "name": "GHP Corrected",
+            "expression": "CALCULATE ( [GHP Findings], GHP[Status] = \"Corrected\" )",
+            "lineageTag": "d2258ffe-3f6c-4d3f-9ecb-6f66ed2439d3",
+            "formatString": "#,0",
+            "displayFolder": "1 Base"
+          },
+          {
+            "name": "GHP Uncorrected",
+            "expression": "CALCULATE ( [GHP Findings], GHP[Status] = \"Uncorrected\" )",
+            "lineageTag": "c0bb4f91-771d-477b-884f-b05d986fb804",
+            "formatString": "#,0",
+            "displayFolder": "1 Base"
+          },
+          {
+            "name": "GHP Not Stated",
+            "expression": "CALCULATE ( [GHP Findings], GHP[Status] = \"Not stated\" )",
+            "lineageTag": "27baa85b-c2e6-46e6-8e71-3e3d67acac11",
+            "formatString": "#,0",
+            "displayFolder": "1 Base",
+            "description": "Status blank, or Minor / Critical typed in the Status column"
+          },
+          {
+            "name": "GHP % Corrected",
+            "expression": "DIVIDE ( [GHP Corrected], [GHP Corrected] + [GHP Uncorrected] )",
+            "lineageTag": "9da52e55-cdb9-4301-9d8b-8998409ba80b",
+            "formatString": "0.0%",
+            "displayFolder": "1 Base",
+            "description": "Corrected ÷ (Corrected + Uncorrected); findings with no status are left out"
+          },
+          {
+            "name": "FOM Pieces",
+            "expression": "VAR _n = SUM ( LineFOM[FOM Count] ) RETURN IF ( _n > 0, _n )",
+            "lineageTag": "efb88db3-6f74-43aa-93ca-724ef401d030",
+            "formatString": "#,0",
+            "displayFolder": "1 Base",
+            "description": "FOM pieces detected at the lines (sum of Count). Blank when none, so empty bars/rows disappear"
+          },
+          {
+            "name": "FOM Incidents",
+            "expression": "CALCULATE ( COUNTROWS ( LineFOM ), LineFOM[FOM Count] > 0 )",
+            "lineageTag": "3483e7a0-c2b4-4858-8d1a-f8b7a9302b73",
+            "formatString": "#,0",
+            "displayFolder": "1 Base",
+            "description": "Log rows with at least one FOM piece"
+          },
+          {
+            "name": "Running Line-Days",
+            "expression": [
+              "CALCULATE (",
+              "    COUNTROWS ( LineFOM ),",
+              "    LineFOM[Line Status] = \"Running\",",
+              "    REMOVEFILTERS ( Department ),",
+              "    REMOVEFILTERS ( 'FOM Category' )",
+              ")"
+            ],
+            "lineageTag": "4fb99fad-8999-4150-955b-58f44d007b78",
+            "formatString": "#,0",
+            "displayFolder": "1 Base",
+            "description": "Line-days with a Count of 0/1/2 (NR = not running is excluded). Ignores the department / category slicers"
+          },
+          {
+            "name": "FOM per 100 Line-Days",
+            "expression": "DIVIDE ( COALESCE ( [FOM Pieces], 0 ) * 100, [Running Line-Days] )",
+            "lineageTag": "2720e24a-817e-4b85-912f-25f094aa02e1",
+            "formatString": "0.00",
+            "displayFolder": "1 Base",
+            "description": "FOM pieces per 100 running line-days"
+          },
+          {
+            "name": "GHP Findings (0)",
+            "expression": "COALESCE ( [GHP Findings], 0 )",
+            "lineageTag": "e1805b31-ed25-4371-90b0-9fcdd03f8f43",
+            "formatString": "#,0",
+            "displayFolder": "1 Base"
+          },
+          {
+            "name": "GHP Uncorrected (0)",
+            "expression": "COALESCE ( [GHP Uncorrected], 0 )",
+            "lineageTag": "5947e69c-74e6-400d-b57e-771a1461c408",
+            "formatString": "#,0",
+            "displayFolder": "1 Base"
+          },
+          {
+            "name": "FOM Pieces (0)",
+            "expression": "COALESCE ( [FOM Pieces], 0 )",
+            "lineageTag": "82c388fa-b02e-4674-9a0c-6e022dcd24bb",
+            "formatString": "#,0",
+            "displayFolder": "1 Base"
+          },
+          {
+            "name": "FOM Incidents (0)",
+            "expression": "COALESCE ( [FOM Incidents], 0 )",
+            "lineageTag": "d2cee4d4-5131-456a-ba06-2e7ddcfa5226",
+            "formatString": "#,0",
+            "displayFolder": "1 Base"
+          },
+          {
+            "name": "Report Date",
+            "expression": [
+              "MAX (",
+              "    CALCULATE ( MAX ( GHP[Date] ), REMOVEFILTERS () ),",
+              "    CALCULATE ( MAX ( LineFOM[Date] ), REMOVEFILTERS () )",
+              ")"
+            ],
+            "lineageTag": "abddbc42-2899-4601-920d-737b4e95d02c",
+            "formatString": "dd mmm yyyy",
+            "displayFolder": "2 Dates & labels",
+            "description": "Latest date in either file - the Topsheet tiles run to this date"
+          },
+          {
+            "name": "FY Start",
+            "expression": "VAR _d = [Report Date] RETURN DATE ( YEAR ( _d ) - IF ( MONTH ( _d ) < 5, 1, 0 ), 5, 1 )",
+            "lineageTag": "9836317c-c037-4926-b391-56a61727fb83",
+            "formatString": "dd mmm yyyy",
+            "displayFolder": "2 Dates & labels",
+            "description": "1 May of the fiscal year"
+          },
+          {
+            "name": "Month Start",
+            "expression": "VAR _d = [Report Date] RETURN DATE ( YEAR ( _d ), MONTH ( _d ), 1 )",
+            "lineageTag": "d76c81d7-c050-4be6-8408-0f6eaad9e6bf",
+            "formatString": "dd mmm yyyy",
+            "displayFolder": "2 Dates & labels"
+          },
+          {
+            "name": "Report Week Start",
+            "expression": "VAR _d = [Report Date] RETURN _d - WEEKDAY ( _d, 2 ) + 1",
+            "lineageTag": "70867670-9b5a-43b2-9eb3-518556505a6a",
+            "formatString": "dd mmm yyyy",
+            "displayFolder": "2 Dates & labels",
+            "description": "Monday of the report week"
+          },
+          {
+            "name": "Report Week Label",
+            "expression": "LOOKUPVALUE ( 'Date'[Fiscal Week Label], 'Date'[Date], [Report Date] )",
+            "lineageTag": "78ff1759-c75f-4870-acd5-373975a3cf17",
+            "displayFolder": "2 Dates & labels"
+          },
+          {
+            "name": "Header Subtitle",
+            "expression": "\"Data through \" & FORMAT ( [Report Date], \"ddd d mmm yyyy\" ) & \" · \" & LOOKUPVALUE ( 'Date'[Fiscal Week], 'Date'[Date], [Report Date] )",
+            "lineageTag": "34241680-31b4-4250-aefa-63f842767257",
+            "displayFolder": "2 Dates & labels"
+          },
+          {
+            "name": "YTD Label",
+            "expression": "\"FY\" & RIGHT ( YEAR ( [FY Start] ) + 1, 2 ) & \" · \" & FORMAT ( [FY Start], \"d mmm\" ) & \" – \" & FORMAT ( [Report Date], \"d mmm yyyy\" )",
+            "lineageTag": "9cf13f15-12fd-4885-8d93-756bc94074c9",
+            "displayFolder": "2 Dates & labels"
+          },
+          {
+            "name": "MTD Label",
+            "expression": "FORMAT ( [Report Date], \"mmmm yyyy\" ) & \" · to \" & FORMAT ( [Report Date], \"d mmm\" )",
+            "lineageTag": "9b8d231b-62bc-46d1-8c92-d3d335b9b3ff",
+            "displayFolder": "2 Dates & labels"
+          },
+          {
+            "name": "Selection Label",
+            "expression": [
+              "VAR _s = MIN ( 'Date'[Date] )",
+              "VAR _e = MIN ( MAX ( 'Date'[Date] ), [Report Date] )",
+              "RETURN \"Showing \" & FORMAT ( _s, \"d mmm\" ) & \" – \" & FORMAT ( _e, \"d mmm yyyy\" )"
+            ],
+            "lineageTag": "92d7b252-d5de-40d0-a99c-e3f920f2a298",
+            "displayFolder": "2 Dates & labels",
+            "description": "Dates the Monthly / Weekly tiles cover (all, or the clicked bar / slicer)"
+          },
+          {
+            "name": "GHP Findings YTD",
+            "expression": "COALESCE ( CALCULATE ( [GHP Findings], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [FY Start], [Report Date] ) ), 0 )",
+            "lineageTag": "9e1f4175-02cd-44d5-9e79-67384e9c925d",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "FOM Pieces YTD",
+            "expression": "COALESCE ( CALCULATE ( [FOM Pieces], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [FY Start], [Report Date] ) ), 0 )",
+            "lineageTag": "a7610ed0-322b-4dce-b5b1-150ce0945f91",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "GHP Findings MTD",
+            "expression": "COALESCE ( CALCULATE ( [GHP Findings], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [Month Start], [Report Date] ) ), 0 )",
+            "lineageTag": "66a7e423-c489-4522-a39e-0dcc773b98fd",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "FOM Pieces MTD",
+            "expression": "COALESCE ( CALCULATE ( [FOM Pieces], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [Month Start], [Report Date] ) ), 0 )",
+            "lineageTag": "ae0a6219-85a7-40d5-b967-8c2213cf88c5",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "GHP Findings WTD",
+            "expression": "COALESCE ( CALCULATE ( [GHP Findings], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [Report Week Start], [Report Date] ) ), 0 )",
+            "lineageTag": "a08759cd-2fd2-41e4-b1f8-475a1ba79367",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "FOM Pieces WTD",
+            "expression": "COALESCE ( CALCULATE ( [FOM Pieces], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [Report Week Start], [Report Date] ) ), 0 )",
+            "lineageTag": "efca0b72-f103-47cc-a746-ef261bb094ed",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "GHP Findings PM",
+            "expression": "COALESCE ( CALCULATE ( [GHP Findings], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], EDATE ( [Month Start], -1 ), [Month Start] - 1 ) ), 0 )",
+            "lineageTag": "89ceb208-353d-40d8-abd5-192968f30f36",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "FOM Pieces PM",
+            "expression": "COALESCE ( CALCULATE ( [FOM Pieces], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], EDATE ( [Month Start], -1 ), [Month Start] - 1 ) ), 0 )",
+            "lineageTag": "0f856760-f182-4b0f-89e3-597de7553223",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "GHP Findings PW",
+            "expression": "COALESCE ( CALCULATE ( [GHP Findings], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [Report Week Start] - 7, [Report Week Start] - 1 ) ), 0 )",
+            "lineageTag": "7f47d7a5-3b16-4c75-bdd4-50e3cd3c5713",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "FOM Pieces PW",
+            "expression": "COALESCE ( CALCULATE ( [FOM Pieces], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [Report Week Start] - 7, [Report Week Start] - 1 ) ), 0 )",
+            "lineageTag": "735c65b0-72cd-4f3a-8ac7-b588ce71430b",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "GHP Uncorrected YTD",
+            "expression": "COALESCE ( CALCULATE ( [GHP Uncorrected], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [FY Start], [Report Date] ) ), 0 )",
+            "lineageTag": "9d62e9a7-1e25-41ef-bdf3-b020f4afb5f5",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "GHP Not Stated YTD",
+            "expression": "COALESCE ( CALCULATE ( [GHP Not Stated], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [FY Start], [Report Date] ) ), 0 )",
+            "lineageTag": "012ec70e-3446-47cd-928f-efc213e7a423",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "FOM Incidents YTD",
+            "expression": "COALESCE ( CALCULATE ( [FOM Incidents], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [FY Start], [Report Date] ) ), 0 )",
+            "lineageTag": "5f11283b-9fdf-494e-bd66-b121c7cf9f8f",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "Running Line-Days YTD",
+            "expression": "COALESCE ( CALCULATE ( [Running Line-Days], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [FY Start], [Report Date] ) ), 0 )",
+            "lineageTag": "3ab7851b-99d3-49b1-afac-065694967ff3",
+            "formatString": "#,0",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "GHP % Corrected YTD",
+            "expression": "CALCULATE ( [GHP % Corrected], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [FY Start], [Report Date] ) )",
+            "lineageTag": "58c33dbd-86d7-45d6-b74e-f025adbf78ce",
+            "formatString": "0.0%",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "FOM per 100 Line-Days YTD",
+            "expression": "COALESCE ( CALCULATE ( [FOM per 100 Line-Days], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [FY Start], [Report Date] ) ), 0 )",
+            "lineageTag": "bc7fab18-107a-401a-82b1-bc8f2b24ab3e",
+            "formatString": "0.00",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "FOM per 100 Line-Days MTD",
+            "expression": "COALESCE ( CALCULATE ( [FOM per 100 Line-Days], REMOVEFILTERS ( 'Date' ), DATESBETWEEN ( 'Date'[Date], [Month Start], [Report Date] ) ), 0 )",
+            "lineageTag": "c6ecbebd-f855-4f21-ab3f-72ef1dea9701",
+            "formatString": "0.00",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "Top GHP Category YTD",
+            "expression": [
+              "VAR _t = TOPN ( 1, FILTER ( VALUES ( 'FOM Category'[FOM Category] ), [GHP Findings YTD] > 0 ), [GHP Findings YTD], DESC )",
+              "RETURN IF ( ISEMPTY ( _t ), \"None\", CONCATENATEX ( _t, 'FOM Category'[FOM Category] & \" (\" & FORMAT ( [GHP Findings YTD], \"#,0\" ) & \")\", \", \" ) )"
+            ],
+            "lineageTag": "3588ac8c-314f-46e1-8a89-22c17e9f2f38",
+            "displayFolder": "3 Topsheet",
+            "description": "GHP FOM category with the most, this FY to date"
+          },
+          {
+            "name": "Top GHP Department YTD",
+            "expression": [
+              "VAR _t = TOPN ( 1, FILTER ( VALUES ( Department[Department] ), [GHP Findings YTD] > 0 ), [GHP Findings YTD], DESC )",
+              "RETURN IF ( ISEMPTY ( _t ), \"None\", CONCATENATEX ( _t, Department[Department] & \" (\" & FORMAT ( [GHP Findings YTD], \"#,0\" ) & \")\", \", \" ) )"
+            ],
+            "lineageTag": "b99a0df1-6f13-460f-ad26-4dd0ac822c29",
+            "displayFolder": "3 Topsheet",
+            "description": "GHP department with the most, this FY to date"
+          },
+          {
+            "name": "Top FOM Type YTD",
+            "expression": [
+              "VAR _t = TOPN ( 1, FILTER ( VALUES ( 'FOM Category'[FOM Category] ), [FOM Pieces YTD] > 0 ), [FOM Pieces YTD], DESC )",
+              "RETURN IF ( ISEMPTY ( _t ), \"None\", CONCATENATEX ( _t, 'FOM Category'[FOM Category] & \" (\" & FORMAT ( [FOM Pieces YTD], \"#,0\" ) & \")\", \", \" ) )"
+            ],
+            "lineageTag": "8fa86eb4-565a-4e47-9fd3-7b3f19b64a6d",
+            "displayFolder": "3 Topsheet",
+            "description": "Line FOM type with the most, this FY to date"
+          },
+          {
+            "name": "Top FOM Source YTD",
+            "expression": [
+              "VAR _t = TOPN ( 1, FILTER ( VALUES ( Department[Department] ), [FOM Pieces YTD] > 0 ), [FOM Pieces YTD], DESC )",
+              "RETURN IF ( ISEMPTY ( _t ), \"None\", CONCATENATEX ( _t, Department[Department] & \" (\" & FORMAT ( [FOM Pieces YTD], \"#,0\" ) & \")\", \", \" ) )"
+            ],
+            "lineageTag": "e5ab9891-e5ab-42c9-8593-73e92538a368",
+            "displayFolder": "3 Topsheet",
+            "description": "Possible source department with the most, this FY to date"
+          },
+          {
+            "name": "Top FOM Detection YTD",
+            "expression": [
+              "VAR _t = TOPN ( 1, FILTER ( VALUES ( LineFOM[Detection Group] ), [FOM Pieces YTD] > 0 ), [FOM Pieces YTD], DESC )",
+              "RETURN IF ( ISEMPTY ( _t ), \"None\", CONCATENATEX ( _t, LineFOM[Detection Group] & \" (\" & FORMAT ( [FOM Pieces YTD], \"#,0\" ) & \")\", \", \" ) )"
+            ],
+            "lineageTag": "a5885502-059c-4699-9e4f-578eb971676e",
+            "displayFolder": "3 Topsheet",
+            "description": "Detection point with the most, this FY to date"
+          },
+          {
+            "name": "GHP YTD Text",
+            "expression": "FORMAT ( [GHP % Corrected YTD], \"0.0%\" ) & \" corrected · \" & [GHP Uncorrected YTD] & \" uncorrected\"",
+            "lineageTag": "b7a36937-9f22-4523-b107-7b98b1f46d9d",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "GHP PM Text",
+            "expression": "\"Last month (\" & FORMAT ( EDATE ( [Month Start], -1 ), \"mmm\" ) & \"): \" & [GHP Findings PM]",
+            "lineageTag": "6e3d8daf-e03b-4631-bae7-94dc9331d3c9",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "GHP PW Text",
+            "expression": "\"Last week: \" & [GHP Findings PW]",
+            "lineageTag": "4203acd6-6144-4f67-8f6e-9d0906e0310e",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "FOM PM Text",
+            "expression": "\"Last month (\" & FORMAT ( EDATE ( [Month Start], -1 ), \"mmm\" ) & \"): \" & [FOM Pieces PM]",
+            "lineageTag": "2a888c9b-728d-4ab5-acea-d04bff1b5c03",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "FOM PW Text",
+            "expression": "\"Last week: \" & [FOM Pieces PW]",
+            "lineageTag": "82cff13b-ef02-410a-9811-b792cfbdcbbe",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "FOM YTD Text",
+            "expression": "[FOM Incidents YTD] & \" incidents · \" & FORMAT ( [Running Line-Days YTD], \"#,0\" ) & \" running line-days\"",
+            "lineageTag": "44514d3a-eb95-43b2-ba5a-430ac08aac4e",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "FOM Rate Text",
+            "expression": "\"This month: \" & FORMAT ( [FOM per 100 Line-Days MTD], \"0.00\" )",
+            "lineageTag": "a2e0e61a-4176-4e06-b756-25e074d1f0d4",
+            "displayFolder": "3 Topsheet"
+          },
+          {
+            "name": "Undated FOM Text",
+            "expression": [
+              "VAR _rows = CALCULATETABLE ( VALUES ( LineFOM[Excel Row] ), ISBLANK ( LineFOM[Date] ), LineFOM[FOM Count] > 0, REMOVEFILTERS ( 'Date' ) )",
+              "VAR _n = CALCULATE ( SUM ( LineFOM[FOM Count] ), ISBLANK ( LineFOM[Date] ), REMOVEFILTERS ( 'Date' ) )",
+              "RETURN",
+              "    IF ( _n > 0, \"+\" & _n & \" piece(s) with no date – Excel row \" & CONCATENATEX ( _rows, LineFOM[Excel Row], \", \" ), [YTD Label] )"
+            ],
+            "lineageTag": "db6a2439-2216-4737-bbcc-6aec6656ea6e",
+            "displayFolder": "3 Topsheet",
+            "description": "FOM rows with no date cannot fall in a month or week: fix the date in Excel"
+          },
+          {
+            "name": "FOM Color",
+            "expression": "IF ( COALESCE ( [FOM Pieces], 0 ) > 0, \"#C62828\", \"#2E7D32\" )",
+            "lineageTag": "4e75bff7-227b-43dd-bd75-f7198fe1e7b7",
+            "displayFolder": "4 Colours",
+            "description": "Red when any FOM piece (target 0)"
+          },
+          {
+            "name": "FOM Color YTD",
+            "expression": "IF ( COALESCE ( [FOM Pieces YTD], 0 ) > 0, \"#C62828\", \"#2E7D32\" )",
+            "lineageTag": "35438c86-3e1a-4a40-a361-8c1a02680dd1",
+            "displayFolder": "4 Colours",
+            "description": "Red when any FOM piece (target 0)"
+          },
+          {
+            "name": "FOM Color MTD",
+            "expression": "IF ( COALESCE ( [FOM Pieces MTD], 0 ) > 0, \"#C62828\", \"#2E7D32\" )",
+            "lineageTag": "2920d69e-4ff0-45af-9480-35746d81ba3a",
+            "displayFolder": "4 Colours",
+            "description": "Red when any FOM piece (target 0)"
+          },
+          {
+            "name": "FOM Color WTD",
+            "expression": "IF ( COALESCE ( [FOM Pieces WTD], 0 ) > 0, \"#C62828\", \"#2E7D32\" )",
+            "lineageTag": "c5abe250-352a-460d-aadf-36f05fd571de",
+            "displayFolder": "4 Colours",
+            "description": "Red when any FOM piece (target 0)"
+          },
+          {
+            "name": "GHP Corrected Color",
+            "expression": "VAR _p = [GHP % Corrected] RETURN SWITCH ( TRUE (), ISBLANK ( _p ), \"#1B2A1E\", _p >= 1, \"#2E7D32\", _p >= 0.95, \"#F9A825\", \"#C62828\" )",
+            "lineageTag": "66a1db91-3b59-4ef9-9ccf-451d35c70cf0",
+            "displayFolder": "4 Colours",
+            "description": "Green 100%, amber 95–99.9%, red below 95%"
+          },
+          {
+            "name": "GHP Corrected Color YTD",
+            "expression": "VAR _p = [GHP % Corrected YTD] RETURN SWITCH ( TRUE (), ISBLANK ( _p ), \"#1B2A1E\", _p >= 1, \"#2E7D32\", _p >= 0.95, \"#F9A825\", \"#C62828\" )",
+            "lineageTag": "7defe738-6fa3-45d1-82c9-b25120ba2d44",
+            "displayFolder": "4 Colours",
+            "description": "Green 100%, amber 95–99.9%, red below 95%"
+          },
+          {
+            "name": "Uncorrected Color",
+            "expression": "IF ( [GHP Uncorrected (0)] > 0, \"#C62828\", \"#2E7D32\" )",
+            "lineageTag": "f0efcf4b-a91e-4fab-87ff-dc10d0eccfac",
+            "displayFolder": "4 Colours"
+          },
+          {
+            "name": "Uncorrected Color YTD",
+            "expression": "IF ( [GHP Uncorrected YTD] > 0, \"#C62828\", \"#2E7D32\" )",
+            "lineageTag": "1170ad1f-fd14-4fce-97d9-42ac07727724",
+            "displayFolder": "4 Colours"
+          },
+          {
+            "name": "GHP Open Items",
+            "expression": "CALCULATE ( [GHP Findings], GHP[Status] <> \"Corrected\" )",
+            "lineageTag": "01aca9e4-a939-48d0-b85e-35dc9b0540a1",
+            "formatString": "#,0",
+            "displayFolder": "5 Details",
+            "description": "Uncorrected + not stated (rows to follow up)"
+          }
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "name": "b4a68bf4-7718-4793-bc7f-ffa7092237dd",
+        "fromTable": "GHP",
+        "fromColumn": "Date",
+        "toTable": "Date",
+        "toColumn": "Date"
+      },
+      {
+        "name": "546698a8-018a-420b-b444-25e0c383cc51",
+        "fromTable": "LineFOM",
+        "fromColumn": "Date",
+        "toTable": "Date",
+        "toColumn": "Date"
+      },
+      {
+        "name": "e72bd089-9ae7-43f6-a0f2-dcc17f7d3aa2",
+        "fromTable": "GHP",
+        "fromColumn": "Department",
+        "toTable": "Department",
+        "toColumn": "Department"
+      },
+      {
+        "name": "c91f555e-8885-4d04-a7d7-e86a277decae",
+        "fromTable": "LineFOM",
+        "fromColumn": "Source Department",
+        "toTable": "Department",
+        "toColumn": "Department"
+      },
+      {
+        "name": "2b922fad-361e-484e-8254-8aa45c3e9a81",
+        "fromTable": "GHP",
+        "fromColumn": "FOM Category",
+        "toTable": "FOM Category",
+        "toColumn": "FOM Category"
+      },
+      {
+        "name": "4266c851-be46-4f83-95ac-99b521bb0110",
+        "fromTable": "LineFOM",
+        "fromColumn": "FOM Type",
+        "toTable": "FOM Category",
+        "toColumn": "FOM Category"
+      }
+    ],
+    "expressions": [
+      {
+        "name": "GhpFilePath",
+        "kind": "m",
+        "lineageTag": "24828c78-e13c-4c55-ba8e-dc7974fc48aa",
+        "expression": "\"https://delmontephinc.sharepoint.com/sites/BugoQA-QRM/Shared%20Documents/GHP/FOM%20Monitoring/FY'27/FOM%20FY27/FY27%20Daily%20FOM%20Inspection.xlsx\" meta [IsParameterQuery=true, Type=\"Text\", IsParameterQueryRequired=true]",
+        "annotations": [
+          {
+            "name": "PBI_ResultType",
+            "value": "Text"
+          }
+        ]
+      },
+      {
+        "name": "GhpWorkbook",
+        "kind": "m",
+        "lineageTag": "b916b7d3-f297-470d-a34a-ecca67b53868",
+        "expression": [
+          "let",
+          "    Source = Excel.Workbook(Binary.Buffer(Web.Contents(GhpFilePath)), null, true)",
+          "in",
+          "    Source"
+        ],
+        "annotations": [
+          {
+            "name": "PBI_ResultType",
+            "value": "Table"
+          }
+        ]
+      },
+      {
+        "name": "LineFilePath",
+        "kind": "m",
+        "lineageTag": "d5b3149a-1790-44b3-99ef-93db377877ac",
+        "expression": "\"https://delmontephinc.sharepoint.com/sites/BugoQA-QRM/Shared%20Documents/GHP/FOM%20Monitoring/FY'27/FOM%20FY27/Line%20FOM%20Detection%20-%20Overall%20Dashboard.xlsx\" meta [IsParameterQuery=true, Type=\"Text\", IsParameterQueryRequired=true]",
+        "annotations": [
+          {
+            "name": "PBI_ResultType",
+            "value": "Text"
+          }
+        ]
+      },
+      {
+        "name": "LineWorkbook",
+        "kind": "m",
+        "lineageTag": "d9f9e3df-2b41-42e3-948a-cf4fdb850eac",
+        "expression": [
+          "let",
+          "    Source = Excel.Workbook(Binary.Buffer(Web.Contents(LineFilePath)), null, true)",
+          "in",
+          "    Source"
+        ],
+        "annotations": [
+          {
+            "name": "PBI_ResultType",
+            "value": "Table"
+          }
+        ]
+      }
+    ],
+    "annotations": [
+      {
+        "name": "PBI_QueryOrder",
+        "value": "[\"GhpFilePath\", \"GhpWorkbook\", \"LineFilePath\", \"LineWorkbook\", \"GHP\", \"LineFOM\", \"Date\", \"Department\", \"FOM Category\", \"_Measures\"]"
+      },
+      {
+        "name": "__PBI_TimeIntelligenceEnabled",
+        "value": "0"
+      }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "SemanticModel",
+    "displayName": "FOM Dashboard"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "0ada82cc-9faf-4c53-96db-f7cff44cd114"
+  }
+}
