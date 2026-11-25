@@ -1,0 +1,37 @@
+// qForms – Microsoft Forms responses (1 submission per day) -> one row per date x location
+// Replace FormsFileUrl with the path of the Forms responses workbook (Excel desktop: File > Info > Copy path).
+// Sign in with "Organizational account" when Excel asks.
+let
+    FormsFileUrl = "https://YOURCOMPANY.sharepoint.com/sites/YOURSITE/Shared%20Documents/SVP-15%20Ambient%20Daily.xlsx",
+    Book = Excel.Workbook(Web.Contents(FormsFileUrl), null, true),
+    Raw = Book{[Item = "Table1", Kind = "Table"]}[Data],
+    BaseCols = {"Id", "Completion time", "Date of reading", "Time of reading", "Monitored by (initials)"},
+    QuestionCols = List.Select(Table.ColumnNames(Raw), each Text.Contains(_, "[") and Text.EndsWith(Text.Trim(_), "]")),
+    Kept = Table.SelectColumns(Raw, BaseCols & QuestionCols, MissingField.UseNull),
+    AsText = Table.TransformColumnTypes(Kept, List.Transform(QuestionCols, each {_, type text})),
+    Unpivoted = Table.UnpivotOtherColumns(AsText, BaseCols, "Question", "Value"),
+    WithLocID = Table.AddColumn(Unpivoted, "LocID", each Number.FromText(Text.BetweenDelimiters([Question], "[", "]")), Int64.Type),
+    WithMeasure = Table.AddColumn(WithLocID, "Measure", each Text.Trim(Text.BeforeDelimiter([Question], "["))),
+    NoQuestion = Table.RemoveColumns(WithMeasure, {"Question"}),
+    Pivoted = Table.Pivot(NoQuestion, List.Distinct(NoQuestion[Measure]), "Measure", "Value"),
+    Needed = {"Running?", "Temp °C", "RH %", "Remarks / corrective action"},
+    Complete = List.Accumulate(Needed, Pivoted, (t, c) => if Table.HasColumns(t, c) then t else Table.AddColumn(t, c, each null)),
+    Locs = Excel.CurrentWorkbook(){[Name = "tblLocations"]}[Content],
+    LocsTyped = Table.TransformColumnTypes(Table.SelectColumns(Locs, {"LocID", "Location"}), {{"LocID", Int64.Type}, {"Location", type text}}),
+    Joined = Table.NestedJoin(Complete, {"LocID"}, LocsTyped, {"LocID"}, "L", JoinKind.LeftOuter),
+    Expanded = Table.ExpandTableColumn(Joined, "L", {"Location"}),
+    Renamed = Table.RenameColumns(Expanded, {
+        {"Date of reading", "Date"}, {"Time of reading", "Time"}, {"Monitored by (initials)", "Monitored_By"},
+        {"Running?", "Running"}, {"Temp °C", "Temp_C"}, {"RH %", "RH_pct"},
+        {"Remarks / corrective action", "Remarks"}, {"Completion time", "Submitted_At"}, {"Id", "Response_ID"}}),
+    WithVerified = Table.AddColumn(Renamed, "Verified_By", each null, type text),
+    WithSource = Table.AddColumn(WithVerified, "Source", each "Microsoft Forms", type text),
+    Ordered = Table.SelectColumns(WithSource, {"Date", "Location", "Time", "Temp_C", "RH_pct", "Running",
+        "Monitored_By", "Verified_By", "Remarks", "Source", "Submitted_At", "Response_ID"}),
+    Typed = Table.TransformColumnTypes(Ordered, {
+        {"Date", type date}, {"Location", type text}, {"Time", type text}, {"Temp_C", type number},
+        {"RH_pct", type number}, {"Running", type text}, {"Monitored_By", type text}, {"Remarks", type text},
+        {"Submitted_At", type datetime}, {"Response_ID", type text}}, "en-US"),
+    Sorted = Table.Sort(Typed, {{"Date", Order.Ascending}, {"Location", Order.Ascending}})
+in
+    Sorted
