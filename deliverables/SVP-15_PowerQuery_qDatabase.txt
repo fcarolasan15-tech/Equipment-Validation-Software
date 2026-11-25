@@ -1,0 +1,47 @@
+// qDatabase – Entry table (Excel + air sampling history) + Microsoft Forms -> one Power BI-ready table
+// If Microsoft Forms is not set up yet, change the FormsRows line to:
+//     FormsRows = #table(Table.ColumnNames(EntryReady), {}),
+let
+    Entry = Excel.CurrentWorkbook(){[Name = "tblEntry"]}[Content],
+    EntryTyped = Table.TransformColumnTypes(Entry, {
+        {"Date", type date}, {"Location", type text}, {"Time", type text}, {"Temp_C", type number},
+        {"RH_pct", type number}, {"Running", type text}, {"Monitored_By", type text}, {"Verified_By", type text},
+        {"Remarks", type text}, {"Source", type text}}),
+    EntryRows = Table.SelectRows(EntryTyped, each [Date] <> null and [Location] <> null and [Location] <> ""),
+    EntrySource = Table.ReplaceValue(EntryRows, null, "Excel Entry", Replacer.ReplaceValue, {"Source"}),
+    EntryReady = Table.AddColumn(Table.AddColumn(EntrySource, "Submitted_At", each null, type datetime),
+        "Response_ID", each null, type text),
+    FormsRows = qForms,
+    Combined = Table.Combine({EntryReady, FormsRows}),
+    WithLocID = Table.AddColumn(Combined, "LocID", each Number.FromText(Text.Start([Location], 2)), Int64.Type),
+    Locs = Table.TransformColumnTypes(Excel.CurrentWorkbook(){[Name = "tblLocations"]}[Content], {
+        {"LocID", Int64.Type}, {"Area", type text}, {"Equipment", type text}, {"Point", type text},
+        {"Temp_Min", type number}, {"Temp_Max", type number}, {"RH_Min", type number}, {"RH_Max", type number}}),
+    Joined = Table.NestedJoin(WithLocID, {"LocID"},
+        Table.SelectColumns(Locs, {"LocID", "Area", "Equipment", "Point", "Temp_Min", "Temp_Max", "RH_Min", "RH_Max"}),
+        {"LocID"}, "L", JoinKind.LeftOuter),
+    Expanded = Table.ExpandTableColumn(Joined, "L", {"Area", "Equipment", "Point", "Temp_Min", "Temp_Max", "RH_Min", "RH_Max"}),
+    RunningFixed = Table.TransformColumns(Expanded, {{"Running", each if _ = null or _ = "" then "Yes" else _, type text}}),
+    WithMonth = Table.AddColumn(RunningFixed, "Month", each Date.StartOfMonth([Date]), type date),
+    WithFY = Table.AddColumn(WithMonth, "FY", each "FY" & Text.PadStart(Text.From(Number.Mod(Date.Year([Date])
+        + (if Date.Month([Date]) >= 5 then 1 else 0), 100)), 2, "0"), type text),
+    TempStatus = Table.AddColumn(WithFY, "Temp_Status", each
+        if [Temp_C] = null then null
+        else if [Temp_Min] = null or [Temp_Max] = null then "No limit"
+        else if [Temp_C] < [Temp_Min] or [Temp_C] > [Temp_Max] then "OUT" else "OK", type text),
+    RHStatus = Table.AddColumn(TempStatus, "RH_Status", each
+        if [RH_pct] = null then null
+        else if [RH_Min] = null or [RH_Max] = null then "No limit"
+        else if [RH_pct] < [RH_Min] or [RH_pct] > [RH_Max] then "OUT" else "OK", type text),
+    Result = Table.AddColumn(RHStatus, "Result", each
+        if [Running] = "No" then "NOT OPERATIONAL"
+        else if [Temp_Status] = "OUT" or [RH_Status] = "OUT" then "OUT OF LIMIT"
+        else if [Temp_C] = null and [RH_pct] = null then null
+        else if [Temp_Status] = "No limit" or [RH_Status] = "No limit" then "NO LIMIT SET"
+        else "PASSED", type text),
+    Ordered = Table.SelectColumns(Result, {"Date", "Month", "FY", "LocID", "Area", "Equipment", "Point", "Location",
+        "Time", "Temp_C", "RH_pct", "Running", "Temp_Min", "Temp_Max", "RH_Min", "RH_Max", "Temp_Status",
+        "RH_Status", "Result", "Monitored_By", "Verified_By", "Remarks", "Source", "Submitted_At", "Response_ID"}),
+    Sorted = Table.Sort(Ordered, {{"Date", Order.Ascending}, {"LocID", Order.Ascending}})
+in
+    Sorted
